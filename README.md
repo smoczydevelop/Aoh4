@@ -1,3 +1,3 @@
-# Age of History IV
+# AoH4
 
-Mod do Age of History III, rozwijany na bazie Bastille.
+Repozytorium wyczyszczone. Gotowe na nowe pliki.

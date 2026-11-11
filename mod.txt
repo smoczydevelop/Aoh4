@@ -1,8 +1,0 @@
-{
-	Name: "Age of History IV",
-	Description: "Mod about French Revolution and interrevolutionary period",
-	
-	Tags: [ "Game", "Mod" ],
-	
-	ChangeNote: "0.1 alpha",
-}

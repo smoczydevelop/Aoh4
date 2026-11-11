@@ -1,5 +1,5 @@
 {
-	Name: "Age oh History IV",
+	Name: "Age of History IV",
 	Description: "Mod about French Revolution and interrevolutionary period",
 	
 	Tags: [ "Game", "Mod" ],

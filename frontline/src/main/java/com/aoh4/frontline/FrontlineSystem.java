@@ -3,22 +3,24 @@ package com.aoh4.frontline;
 import java.util.*;
 
 /**
- * Independent planning engine. Requires an adapter to the actual AoH4 engine.
- * No game files are patched by this class alone.
+ * AoH3 planning core, based on the structure of the user's Android classes.dex.
+ *
+ * IMPORTANT: This is source code, not a ready-to-install DEX patch.
+ * The caller must integrate this class with game-turn updates and menus.
  */
 public final class FrontlineSystem {
     public enum Order { HOLD, DEFEND, ATTACK, STOP }
 
     public interface World {
-        int ownerOf(int province);
-        Collection<Integer> neighborsOf(int province);
-        Collection<Integer> provincesOf(int civilization);
-        int locationOf(long armyId);
-        int armyStrength(long armyId);
-        int distance(int fromProvince, int toProvince);
-        void moveArmy(long armyId, int province);
-        void attackProvince(long armyId, int province);
+        int ownerOf(int provinceId);
+        Collection<Integer> neighborsOf(int provinceId);
+        Collection<Integer> provincesOf(int civilizationId);
+        int locationOf(int civilizationId, String armyKey);
+        int armyStrength(int civilizationId, String armyKey);
+        int distance(int fromProvinceId, int toProvinceId);
+        boolean isMoving(int civilizationId, String armyKey);
         boolean isAtWar(int civilizationA, int civilizationB);
+        boolean issueMove(int civilizationId, String armyKey, int toProvinceId, boolean offensive);
     }
 
     public static final class Front {
@@ -28,7 +30,8 @@ public final class FrontlineSystem {
         public final String name;
         public final int colorRgb;
         public Order order = Order.HOLD;
-        public final Set<Long> armies = new LinkedHashSet<>();
+        public final Set<String> armies = new LinkedHashSet<>();
+        // Empty means the entire land border with 'enemy'.
         public final Set<Integer> selectedBorderProvinces = new LinkedHashSet<>();
 
         private Front(String id, int owner, int enemy, String name, int colorRgb) {
@@ -43,7 +46,7 @@ public final class FrontlineSystem {
     private final Map<String, Front> fronts = new LinkedHashMap<>();
 
     public Front create(int owner, int enemy, String name, int colorRgb) {
-        if (owner == enemy) throw new IllegalArgumentException("Enemy must differ");
+        if (owner == enemy) throw new IllegalArgumentException("Choose another state");
         Front front = new Front(UUID.randomUUID().toString(), owner, enemy, name, colorRgb);
         fronts.put(front.id, front);
         return front;
@@ -53,27 +56,33 @@ public final class FrontlineSystem {
         return Collections.unmodifiableCollection(fronts.values());
     }
 
-    public boolean remove(String id) { return fronts.remove(id) != null; }
+    public boolean remove(String id) {
+        return fronts.remove(id) != null;
+    }
 
-    public void assign(String frontId, long armyId) {
+    public void assign(String frontId, String armyKey) {
         Front target = required(frontId);
-        for (Front front : fronts.values()) front.armies.remove(armyId);
-        target.armies.add(armyId);
+        Objects.requireNonNull(armyKey, "armyKey");
+        for (Front front : fronts.values()) {
+            if (front.owner == target.owner) front.armies.remove(armyKey);
+        }
+        target.armies.add(armyKey);
     }
 
     public void setOrder(String frontId, Order order) {
         required(frontId).order = Objects.requireNonNull(order);
     }
 
-    public void selectBorder(String frontId, Collection<Integer> provinces) {
+    public void selectBorder(String frontId, Collection<Integer> provinceIds) {
         Front front = required(frontId);
         front.selectedBorderProvinces.clear();
-        front.selectedBorderProvinces.addAll(provinces);
+        front.selectedBorderProvinces.addAll(provinceIds);
     }
 
     public List<Integer> border(World world, Front front) {
         List<Integer> result = new ArrayList<>();
         for (int province : world.provincesOf(front.owner)) {
+            if (world.ownerOf(province) != front.owner) continue;
             if (!front.selectedBorderProvinces.isEmpty()
                     && !front.selectedBorderProvinces.contains(province)) continue;
             for (int adjacent : world.neighborsOf(province)) {
@@ -87,32 +96,41 @@ public final class FrontlineSystem {
         return result;
     }
 
-    /** Call at most once per game turn. Never call each render frame. */
+    /**
+     * Call ONCE per turn, not per render frame.
+     * Real game implementation must validate paths and ownership.
+     */
     public void tick(World world) {
         for (Front front : fronts.values()) {
             if (front.order == Order.STOP) continue;
-            List<Integer> border = border(world, front);
-            if (border.isEmpty()) continue;
-            Map<Integer, Integer> assignedStrength = new HashMap<>();
-            for (long army : front.armies) {
-                int from = world.locationOf(army);
-                if (from < 0) continue; // destroyed / missing army
+            List<Integer> positions = border(world, front);
+            if (positions.isEmpty()) continue;
+            Map<Integer, Integer> allocated = new HashMap<>();
+            for (String key : front.armies) {
+                int origin = world.locationOf(front.owner, key);
+                if (origin < 0 || world.isMoving(front.owner, key)) continue;
                 int destination = -1;
-                long bestScore = Long.MAX_VALUE;
-                for (int province : border) {
-                    long score = 100L * Math.max(0, world.distance(from, province))
-                            + assignedStrength.getOrDefault(province, 0);
-                    if (score < bestScore) { bestScore = score; destination = province; }
+                long best = Long.MAX_VALUE;
+                for (int province : positions) {
+                    long distanceScore = Math.max(0, world.distance(origin, province));
+                    long score = distanceScore * 100L + allocated.getOrDefault(province, 0);
+                    if (score < best) {
+                        best = score;
+                        destination = province;
+                    }
                 }
                 if (destination < 0) continue;
-                assignedStrength.merge(destination, Math.max(1, world.armyStrength(army)), Integer::sum);
-                if (from != destination) {
-                    world.moveArmy(army, destination);
-                } else if (front.order == Order.ATTACK
-                        && world.isAtWar(front.owner, front.enemy)) {
-                    for (int adjacent : world.neighborsOf(destination)) {
+                allocated.merge(destination,
+                        Math.max(1, world.armyStrength(front.owner, key)),
+                        Integer::sum);
+                if (origin != destination) {
+                    world.issueMove(front.owner, key, destination, false);
+                    continue;
+                }
+                if (front.order == Order.ATTACK && world.isAtWar(front.owner, front.enemy)) {
+                    for (int adjacent : world.neighborsOf(origin)) {
                         if (world.ownerOf(adjacent) == front.enemy) {
-                            world.attackProvince(army, adjacent);
+                            world.issueMove(front.owner, key, adjacent, true);
                             break;
                         }
                     }

@@ -1,21 +1,21 @@
-# Frontline System 1.0 — core prototype
+# AoH4 Premium — Frontline System (prototyp)
 
-This is **Java source**, not a ready-to-install Android mod.
+**Gra docelowa:** oryginalne Age of History 3 na Androida, kod w `classes.dex` (nie Bastille).
 
-Features implemented in the standalone planning layer:
-- Multiple fronts, each with a name, color, opponent and assigned armies.
-- Automatic border discovery via province neighbors.
-- Optional manual selection of a subset of border provinces.
-- Army assignment to exactly one front.
-- HOLD / DEFEND / ATTACK / STOP orders.
-- Basic strength-aware allocation to border provinces.
-- Attack orders only when the two civilizations are at war.
+## Co już jest
+- Algorytm wielu linii frontu (`FrontlineSystem.java`).
+- Armie identyfikowane przez `String armyKey`, zgodnie z przesłanym DEX.
+- Automatyczne wyszukiwanie prowincji granicznych.
+- Wybór części granicy i podział wojsk między prowincje.
+- Rozkazy HOLD / DEFEND / ATTACK / STOP.
+- Adapter odczytu gry (`AoH3WorldAdapter.java`) bazujący na metodach potwierdzonych w DEX.
 
-Limitations:
-- Requires an implementation of World for the actual game engine.
-- Does not render lines or buttons in the game.
-- Does not serialize fronts into saved games.
-- Does not implement sophisticated pathfinding, supply, front segmentation, or safe attack evaluation.
-- The engine must validate movements, ownership, accessibility and army IDs.
+## Co nie działa jeszcze w samej grze
+- Brak hooka wykonywanego co turę.
+- Brak wykonania ruchu: `MovementHook` wymaga bezpiecznego podłączenia do `Civilization.newMove(...)`.
+- Brak przycisków i rysowania frontów na mapie.
+- Brak zapisu/odczytu frontów.
+- Brak wynikowego, przetestowanego `classes.dex` lub APK.
 
-DO NOT paste the Java file into assets or replace classes.dex with it.
+## Instrukcja instalacji
+Zobacz [INSTALL_PL.md](INSTALL_PL.md). **Nie kopiuj źródeł .java do APK**: nie są gotowym modem. Szczegółowa analiza przesłanego DEX jest w [ANALIZA_CLASSES_DEX.md](ANALIZA_CLASSES_DEX.md).
